@@ -31,7 +31,7 @@ use std::collections::HashMap;
 use std::hash::Hash;
 use std::ptr::NonNull;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Mutex, RwLock};
+use std::sync::Mutex;
 
 use ahash::RandomState;
 
@@ -63,6 +63,32 @@ impl<K, V> SieveNode<K, V> {
     }
 }
 
+/// All mutable state protected by a single mutex.
+struct SieveState<K, V> {
+    /// Fast key lookup: key -> node pointer.
+    index: HashMap<K, NonNull<SieveNode<K, V>>, RandomState>,
+
+    /// Head of linked list (newest entries).
+    head: Option<NonNull<SieveNode<K, V>>>,
+
+    /// Tail of linked list (oldest entries).
+    tail: Option<NonNull<SieveNode<K, V>>>,
+
+    /// Hand pointer for eviction (sweeps tail -> head).
+    hand: Option<NonNull<SieveNode<K, V>>>,
+}
+
+impl<K, V> SieveState<K, V> {
+    fn new(capacity: usize) -> Self {
+        Self {
+            index: HashMap::with_capacity_and_hasher(capacity, RandomState::new()),
+            head: None,
+            tail: None,
+            hand: None,
+        }
+    }
+}
+
 /// SIEVE cache implementation.
 ///
 /// A thread-safe cache using the SIEVE eviction algorithm.
@@ -81,17 +107,8 @@ impl<K, V> SieveNode<K, V> {
 /// assert_eq!(cache.len(), 2);
 /// ```
 pub struct SieveCache<K, V> {
-    /// Fast key lookup: key -> node pointer.
-    index: RwLock<HashMap<K, NonNull<SieveNode<K, V>>, RandomState>>,
-
-    /// Head of linked list (newest entries).
-    head: Mutex<Option<NonNull<SieveNode<K, V>>>>,
-
-    /// Tail of linked list (oldest entries).
-    tail: Mutex<Option<NonNull<SieveNode<K, V>>>>,
-
-    /// Hand pointer for eviction (sweeps tail -> head).
-    hand: Mutex<Option<NonNull<SieveNode<K, V>>>>,
+    /// All mutable state protected by a single mutex.
+    state: Mutex<SieveState<K, V>>,
 
     /// Current number of entries.
     size: AtomicUsize,
@@ -104,8 +121,8 @@ pub struct SieveCache<K, V> {
 }
 
 // Safety: SieveCache is Send + Sync because:
-// 1. All shared state is protected by RwLock/Mutex
-// 2. NonNull pointers are only dereferenced while holding appropriate locks
+// 1. All shared state is protected by Mutex
+// 2. NonNull pointers are only dereferenced while holding the lock
 // 3. Memory is properly managed (Box allocation, Drop implementation)
 unsafe impl<K: Send, V: Send> Send for SieveCache<K, V> {}
 unsafe impl<K: Send + Sync, V: Send + Sync> Sync for SieveCache<K, V> {}
@@ -126,7 +143,7 @@ where
     /// Panics if capacity is zero.
     #[must_use]
     pub fn new(capacity: usize) -> Self {
-        assert!(capacity > 0, "capacity must be greater than 0");
+        assert!(capacity > 0, "{}", crate::config::messages::ZERO_CAPACITY);
         Self::with_config(CacheConfig::new(capacity))
     }
 
@@ -135,13 +152,7 @@ where
     pub fn with_config(config: CacheConfig) -> Self {
         let initial_cap = config.initial_capacity_hint();
         Self {
-            index: RwLock::new(HashMap::with_capacity_and_hasher(
-                initial_cap,
-                RandomState::new(),
-            )),
-            head: Mutex::new(None),
-            tail: Mutex::new(None),
-            hand: Mutex::new(None),
+            state: Mutex::new(SieveState::new(initial_cap)),
             size: AtomicUsize::new(0),
             config,
             stats: CacheStats::new(),
@@ -152,30 +163,30 @@ where
     ///
     /// # Safety
     ///
-    /// Caller must ensure `node_ptr` is valid and not already in the list.
-    fn insert_at_head(&self, node_ptr: NonNull<SieveNode<K, V>>) {
-        let mut head_guard = self.head.lock().unwrap();
-        let mut tail_guard = self.tail.lock().unwrap();
-
-        // SAFETY: We have exclusive access via locks, and node_ptr is valid
+    /// Caller must hold the state lock and ensure `node_ptr` is valid.
+    unsafe fn insert_at_head_locked(
+        state: &mut SieveState<K, V>,
+        node_ptr: NonNull<SieveNode<K, V>>,
+    ) {
+        // SAFETY: Caller guarantees node_ptr is valid and we hold the lock
         unsafe {
             let node = node_ptr.as_ptr();
 
             // Link to current head
-            (*node).next = *head_guard;
+            (*node).next = state.head;
             (*node).prev = None;
 
             // Update old head's prev pointer
-            if let Some(old_head) = *head_guard {
+            if let Some(old_head) = state.head {
                 (*old_head.as_ptr()).prev = Some(node_ptr);
             }
 
             // Update head
-            *head_guard = Some(node_ptr);
+            state.head = Some(node_ptr);
 
             // If list was empty, also set tail
-            if tail_guard.is_none() {
-                *tail_guard = Some(node_ptr);
+            if state.tail.is_none() {
+                state.tail = Some(node_ptr);
             }
         }
     }
@@ -184,25 +195,24 @@ where
     ///
     /// # Safety
     ///
-    /// Caller must ensure `node_ptr` is valid and currently in the list.
-    fn unlink_node(&self, node_ptr: NonNull<SieveNode<K, V>>) {
-        let mut head_guard = self.head.lock().unwrap();
-        let mut tail_guard = self.tail.lock().unwrap();
-        let mut hand_guard = self.hand.lock().unwrap();
-
-        // SAFETY: We have exclusive access via locks, and node_ptr is valid
+    /// Caller must hold the state lock and ensure `node_ptr` is valid and in the list.
+    unsafe fn unlink_node_locked(
+        state: &mut SieveState<K, V>,
+        node_ptr: NonNull<SieveNode<K, V>>,
+    ) {
+        // SAFETY: Caller guarantees node_ptr is valid and we hold the lock
         unsafe {
             let node = node_ptr.as_ptr();
             let prev = (*node).prev;
             let next = (*node).next;
 
             // If hand points to this node, move it
-            if *hand_guard == Some(node_ptr) {
+            if state.hand == Some(node_ptr) {
                 // Move hand to prev, or to tail if at head
-                *hand_guard = prev.or(*tail_guard);
+                state.hand = prev.or(state.tail);
                 // If we're removing the only entry, hand becomes None
-                if *hand_guard == Some(node_ptr) {
-                    *hand_guard = None;
+                if state.hand == Some(node_ptr) {
+                    state.hand = None;
                 }
             }
 
@@ -213,7 +223,7 @@ where
                 }
                 None => {
                     // This was the head
-                    *head_guard = next;
+                    state.head = next;
                 }
             }
 
@@ -224,7 +234,7 @@ where
                 }
                 None => {
                     // This was the tail
-                    *tail_guard = prev;
+                    state.tail = prev;
                 }
             }
         }
@@ -234,54 +244,48 @@ where
     ///
     /// The hand sweeps from tail toward head, resetting visited flags
     /// until it finds an unvisited entry to evict.
-    fn evict_one(&self) {
-        // Get current hand position, initializing to tail if needed
-        let evict_ptr = {
-            let mut hand_guard = self.hand.lock().unwrap();
+    ///
+    /// # Safety
+    ///
+    /// Caller must hold the state lock.
+    unsafe fn evict_one_locked(&self, state: &mut SieveState<K, V>) {
+        // Initialize hand to tail if not set
+        if state.hand.is_none() {
+            state.hand = state.tail;
+        }
 
-            // Initialize hand to tail if not set
-            if hand_guard.is_none() {
-                let tail_guard = self.tail.lock().unwrap();
-                *hand_guard = *tail_guard;
-            }
+        // Find an unvisited entry
+        let evict_ptr = loop {
+            let current_ptr = match state.hand {
+                Some(ptr) => ptr,
+                None => return, // Empty cache
+            };
 
-            // Find an unvisited entry
-            loop {
-                let current_ptr = match *hand_guard {
-                    Some(ptr) => ptr,
-                    None => return, // Empty cache
-                };
-
-                // SAFETY: We hold the hand lock and current_ptr is valid
-                let is_visited = unsafe { (*current_ptr.as_ptr()).entry.is_visited() };
+            // SAFETY: We hold the lock and current_ptr is valid
+            unsafe {
+                let is_visited = (*current_ptr.as_ptr()).entry.is_visited();
 
                 if is_visited {
                     // Clear visited flag and move hand toward head
-                    unsafe {
-                        (*current_ptr.as_ptr()).entry.clear_visited();
-                        let prev = (*current_ptr.as_ptr()).prev;
-                        *hand_guard = prev;
+                    (*current_ptr.as_ptr()).entry.clear_visited();
+                    let prev = (*current_ptr.as_ptr()).prev;
+                    state.hand = prev;
 
-                        // Wrap around to tail if we reach head
-                        if hand_guard.is_none() {
-                            let tail_guard = self.tail.lock().unwrap();
-                            *hand_guard = *tail_guard;
-                        }
+                    // Wrap around to tail if we reach head
+                    if state.hand.is_none() {
+                        state.hand = state.tail;
                     }
                 } else {
                     // Found an unvisited entry - evict it
-                    // Move hand first, then return the pointer to evict
-                    unsafe {
-                        let prev = (*current_ptr.as_ptr()).prev;
-                        *hand_guard = prev;
+                    // Move hand first
+                    let prev = (*current_ptr.as_ptr()).prev;
+                    state.hand = prev;
 
-                        if hand_guard.is_none() {
-                            let tail_guard = self.tail.lock().unwrap();
-                            *hand_guard = *tail_guard;
-                            // Don't point hand at the node we're about to remove
-                            if *hand_guard == Some(current_ptr) {
-                                *hand_guard = None;
-                            }
+                    if state.hand.is_none() {
+                        state.hand = state.tail;
+                        // Don't point hand at the node we're about to remove
+                        if state.hand == Some(current_ptr) {
+                            state.hand = None;
                         }
                     }
                     break current_ptr;
@@ -289,21 +293,18 @@ where
             }
         };
 
-        // Get the key before removing from index
-        let key = unsafe { (*evict_ptr.as_ptr()).entry.key().clone() };
-
-        // Remove from index
-        {
-            let mut index_guard = self.index.write().unwrap();
-            index_guard.remove(&key);
-        }
-
-        // Remove from list
-        self.unlink_node(evict_ptr);
-
-        // Deallocate the node
-        // SAFETY: We've removed all references to this node
+        // SAFETY: evict_ptr is valid, we hold the lock
         unsafe {
+            // Get the key before removing
+            let key = (*evict_ptr.as_ptr()).entry.key().clone();
+
+            // Remove from index
+            state.index.remove(&key);
+
+            // Remove from list
+            Self::unlink_node_locked(state, evict_ptr);
+
+            // Deallocate the node
             let _ = Box::from_raw(evict_ptr.as_ptr());
         }
 
@@ -318,12 +319,12 @@ where
     V: Clone + Send + Sync,
 {
     fn get(&self, key: &K) -> Option<V> {
-        let index_guard = self.index.read().unwrap();
+        let state = self.state.lock().unwrap();
 
-        match index_guard.get(key) {
+        match state.index.get(key) {
             Some(&node_ptr) => {
                 // SIEVE: Just set visited flag - NO list modification!
-                // SAFETY: node_ptr is valid while we hold the index read lock
+                // SAFETY: node_ptr is valid while we hold the lock
                 let value = unsafe {
                     let node = node_ptr.as_ref();
                     node.entry.mark_visited();
@@ -341,21 +342,39 @@ where
     }
 
     fn insert(&self, key: K, value: V) -> Option<V> {
-        // Check if key already exists
-        {
-            let index_guard = self.index.read().unwrap();
-            if let Some(&node_ptr) = index_guard.get(&key) {
-                // Update existing entry
-                // SAFETY: node_ptr is valid while we hold the index read lock
-                let old_value = unsafe { (*node_ptr.as_ptr()).entry.value().clone() };
+        let mut state = self.state.lock().unwrap();
 
-                // For simplicity, we remove and re-insert
-                // A more optimized version could update in place
-                drop(index_guard);
-                self.remove(&key);
-                self.insert(key, value);
-                return Some(old_value);
+        // Check if key already exists
+        if let Some(&node_ptr) = state.index.get(&key) {
+            // Update existing entry - get old value first
+            // SAFETY: node_ptr is valid while we hold the lock
+            let old_value = unsafe { (*node_ptr.as_ptr()).entry.value().clone() };
+
+            // Remove the old node
+            // SAFETY: We hold the lock
+            unsafe {
+                Self::unlink_node_locked(&mut state, node_ptr);
+                state.index.remove(&key);
+                let _ = Box::from_raw(node_ptr.as_ptr());
             }
+            self.size.fetch_sub(1, Ordering::Relaxed);
+
+            // Create new node with new value
+            let node = Box::new(SieveNode::new(key.clone(), value));
+            // SAFETY: Box::into_raw returns a valid pointer
+            let node_ptr = unsafe { NonNull::new_unchecked(Box::into_raw(node)) };
+
+            // Insert into index
+            state.index.insert(key, node_ptr);
+
+            // Insert at head of list
+            // SAFETY: We hold the lock and node_ptr is valid
+            unsafe {
+                Self::insert_at_head_locked(&mut state, node_ptr);
+            }
+            self.size.fetch_add(1, Ordering::Relaxed);
+
+            return Some(old_value);
         }
 
         // Create new node
@@ -364,37 +383,42 @@ where
         let node_ptr = unsafe { NonNull::new_unchecked(Box::into_raw(node)) };
 
         // Insert into index
-        {
-            let mut index_guard = self.index.write().unwrap();
-            index_guard.insert(key, node_ptr);
-        }
+        state.index.insert(key, node_ptr);
 
         // Insert at head of list
-        self.insert_at_head(node_ptr);
+        // SAFETY: We hold the lock and node_ptr is valid
+        unsafe {
+            Self::insert_at_head_locked(&mut state, node_ptr);
+        }
         self.size.fetch_add(1, Ordering::Relaxed);
         self.stats.record_insertion();
 
         // Evict if over capacity
         while self.size.load(Ordering::Relaxed) > self.config.capacity() {
-            self.evict_one();
+            // SAFETY: We hold the lock
+            unsafe {
+                self.evict_one_locked(&mut state);
+            }
         }
 
         None
     }
 
     fn remove(&self, key: &K) -> Option<V> {
+        let mut state = self.state.lock().unwrap();
+
         // Remove from index
-        let node_ptr = {
-            let mut index_guard = self.index.write().unwrap();
-            index_guard.remove(key)?
-        };
+        let node_ptr = state.index.remove(key)?;
 
         // Get value before deallocating
-        // SAFETY: node_ptr is valid, we just removed it from the index
+        // SAFETY: node_ptr is valid, we just removed it from the index but still hold lock
         let value = unsafe { (*node_ptr.as_ptr()).entry.value().clone() };
 
         // Remove from list
-        self.unlink_node(node_ptr);
+        // SAFETY: We hold the lock
+        unsafe {
+            Self::unlink_node_locked(&mut state, node_ptr);
+        }
 
         // Deallocate
         // SAFETY: We've removed all references to this node
@@ -407,8 +431,8 @@ where
     }
 
     fn contains(&self, key: &K) -> bool {
-        let index_guard = self.index.read().unwrap();
-        index_guard.contains_key(key)
+        let state = self.state.lock().unwrap();
+        state.index.contains_key(key)
     }
 
     fn len(&self) -> usize {
@@ -420,23 +444,19 @@ where
     }
 
     fn clear(&self) {
-        // Remove all nodes
-        let mut index_guard = self.index.write().unwrap();
-        let mut head_guard = self.head.lock().unwrap();
-        let mut tail_guard = self.tail.lock().unwrap();
-        let mut hand_guard = self.hand.lock().unwrap();
+        let mut state = self.state.lock().unwrap();
 
         // Deallocate all nodes
-        for (_, node_ptr) in index_guard.drain() {
+        for (_, node_ptr) in state.index.drain() {
             // SAFETY: We have exclusive access to all data structures
             unsafe {
                 let _ = Box::from_raw(node_ptr.as_ptr());
             }
         }
 
-        *head_guard = None;
-        *tail_guard = None;
-        *hand_guard = None;
+        state.head = None;
+        state.tail = None;
+        state.hand = None;
         self.size.store(0, Ordering::Relaxed);
     }
 
@@ -445,12 +465,12 @@ where
     }
 
     fn peek(&self, key: &K) -> Option<V> {
-        let index_guard = self.index.read().unwrap();
+        let state = self.state.lock().unwrap();
 
-        match index_guard.get(key) {
+        match state.index.get(key) {
             Some(&node_ptr) => {
                 // Peek: Do NOT update visited flag
-                // SAFETY: node_ptr is valid while we hold the index read lock
+                // SAFETY: node_ptr is valid while we hold the lock
                 let value = unsafe { (*node_ptr.as_ptr()).entry.value().clone() };
                 Some(value)
             }
@@ -463,8 +483,8 @@ impl<K, V> Drop for SieveCache<K, V> {
     fn drop(&mut self) {
         // We have exclusive access in drop, so no need for locks
         // SAFETY: No other threads can access this cache
-        if let Ok(index) = self.index.get_mut() {
-            for (_, node_ptr) in index.drain() {
+        if let Ok(state) = self.state.get_mut() {
+            for (_, node_ptr) in state.index.drain() {
                 unsafe {
                     let _ = Box::from_raw(node_ptr.as_ptr());
                 }
@@ -594,6 +614,8 @@ mod tests {
 
     #[test]
     fn test_stats() {
+        use crate::config::defaults::FLOAT_TOLERANCE;
+
         let cache = SieveCache::new(10);
 
         cache.insert("a".to_string(), 1);
@@ -605,7 +627,9 @@ mod tests {
         assert_eq!(stats.hits(), 1);
         assert_eq!(stats.misses(), 2);
         assert_eq!(stats.insertions(), 1);
-        assert!((stats.hit_ratio() - 0.333).abs() < 0.01);
+
+        let expected_ratio = 1.0 / 3.0;
+        assert!((stats.hit_ratio() - expected_ratio).abs() < FLOAT_TOLERANCE);
     }
 
     #[test]

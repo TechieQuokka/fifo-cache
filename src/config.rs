@@ -34,6 +34,15 @@ pub mod defaults {
     /// Chosen as a reasonable starting point for small applications.
     /// For production use, explicitly configure via `CacheConfig::new(capacity)`.
     pub const DEFAULT_CAPACITY: usize = 1024;
+
+    /// Tolerance for floating-point comparisons in tests.
+    pub const FLOAT_TOLERANCE: f64 = 0.01;
+}
+
+/// Common error messages for consistent error handling.
+pub mod messages {
+    /// Error message for zero capacity.
+    pub const ZERO_CAPACITY: &str = "capacity must be greater than 0";
 }
 
 /// Cache configuration builder.

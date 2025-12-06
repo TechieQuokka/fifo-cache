@@ -197,7 +197,7 @@ where
     /// Panics if capacity is zero.
     #[must_use]
     pub fn new(capacity: usize) -> Self {
-        assert!(capacity > 0, "capacity must be greater than 0");
+        assert!(capacity > 0, "{}", crate::config::messages::ZERO_CAPACITY);
         Self::with_config(CacheConfig::new(capacity))
     }
 
@@ -737,6 +737,8 @@ mod tests {
 
     #[test]
     fn test_stats() {
+        use crate::config::defaults::FLOAT_TOLERANCE;
+
         let cache = S3FifoCache::new(10);
 
         cache.insert("a".to_string(), 1);
@@ -748,7 +750,9 @@ mod tests {
         assert_eq!(stats.hits(), 1);
         assert_eq!(stats.misses(), 2);
         assert_eq!(stats.insertions(), 1);
-        assert!((stats.hit_ratio() - 0.333).abs() < 0.01);
+
+        let expected_ratio = 1.0 / 3.0;
+        assert!((stats.hit_ratio() - expected_ratio).abs() < FLOAT_TOLERANCE);
     }
 
     #[test]

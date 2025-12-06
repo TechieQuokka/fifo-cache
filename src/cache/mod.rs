@@ -4,10 +4,13 @@
 //! - [`Cache`]: The core trait defining cache operations
 //! - [`SieveCache`]: SIEVE algorithm implementation (NSDI 2024)
 //! - [`S3FifoCache`]: S3-FIFO algorithm implementation (SOSP 2023)
+//! - [`LruCache`]: LRU baseline implementation (for benchmarks)
 
+mod lru;
 mod s3fifo;
 mod sieve;
 
+pub use lru::LruCache;
 pub use s3fifo::S3FifoCache;
 pub use sieve::SieveCache;
 

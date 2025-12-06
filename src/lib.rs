@@ -50,10 +50,11 @@ mod cache;
 mod config;
 mod error;
 mod node;
+pub mod queue;
 mod stats;
 
 // Public API re-exports
-pub use cache::{Cache, S3FifoCache, SieveCache};
+pub use cache::{Cache, LruCache, S3FifoCache, SieveCache};
 pub use config::CacheConfig;
 pub use error::{CacheError, Result};
 pub use stats::CacheStats;

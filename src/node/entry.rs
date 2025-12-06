@@ -90,7 +90,9 @@ impl<K, V> CacheEntry<K, V> {
     ///
     /// From paper analysis: 2 bits is sufficient; more bits provide
     /// negligible improvement while increasing memory overhead.
-    pub const MAX_FREQ: u8 = 3;
+    ///
+    /// This value is sourced from `config::defaults::MAX_FREQUENCY`.
+    pub const MAX_FREQ: u8 = crate::config::defaults::MAX_FREQUENCY;
 
     /// Increment the frequency counter, capped at `MAX_FREQ`.
     ///

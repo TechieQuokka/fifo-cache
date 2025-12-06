@@ -264,16 +264,19 @@ fifo-cache/
 │   ├── node/
 │   │   ├── mod.rs          # Node types
 │   │   └── entry.rs        # Cache entry with metadata
-│   ├── config.rs           # Configuration & builder
+│   ├── bin/
+│   │   └── fifo_bench.rs   # CLI benchmark tool
+│   ├── config.rs           # Configuration & builder (with defaults & messages)
 │   ├── stats.rs            # Hit/miss statistics
 │   └── error.rs            # Error types
-├── benches/
+├── benches/                # (To be created)
 │   ├── throughput.rs       # Multi-threaded throughput
 │   └── hit_ratio.rs        # Cache efficiency benchmarks
-├── examples/
+├── examples/               # (To be created)
 │   └── basic_usage.rs
 └── documents/
-    └── ARCHITECTURE.md     # This file
+    ├── ARCHITECTURE.md     # This file
+    └── ARCHITECTURE_KO.md  # Korean version
 ```
 
 ### 2.2 Core Trait Definition
