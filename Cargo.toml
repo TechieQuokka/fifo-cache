@@ -1,0 +1,61 @@
+[package]
+name = "fifo-cache"
+version = "0.1.0"
+edition = "2021"
+authors = ["seung"]
+description = "High-performance S3-FIFO and SIEVE cache implementations based on SOSP'23 and NSDI'24 papers"
+license = "MIT OR Apache-2.0"
+keywords = ["cache", "s3-fifo", "sieve", "concurrent", "lru"]
+categories = ["caching", "concurrency", "data-structures"]
+readme = "README.md"
+
+[dependencies]
+# Error handling - provides derive macro for custom error types
+thiserror = "1.0"
+
+# Fast hashing - significantly faster than std HashMap
+ahash = "0.8"
+
+# CLI argument parsing (optional, for benchmark binary)
+clap = { version = "4.5", features = ["derive"], optional = true }
+
+# Serialization support (optional)
+serde = { version = "1.0", features = ["derive"], optional = true }
+
+[dev-dependencies]
+# Benchmarking framework
+criterion = { version = "0.5", features = ["html_reports"] }
+
+# Random number generation for tests
+rand = "0.8"
+
+# Zipf distribution for realistic cache workloads
+rand_distr = "0.4"
+
+[features]
+default = []
+cli = ["clap"]
+serde = ["dep:serde"]
+
+[[bin]]
+name = "fifo-bench"
+path = "src/bin/fifo_bench.rs"
+required-features = ["cli"]
+
+# Benchmarks (uncomment when bench files are created)
+# [[bench]]
+# name = "throughput"
+# harness = false
+#
+# [[bench]]
+# name = "hit_ratio"
+# harness = false
+
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"
+
+[profile.bench]
+lto = true
+codegen-units = 1

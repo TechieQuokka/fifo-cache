@@ -1,0 +1,128 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 400">
+  <defs>
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#374151"/>
+    </marker>
+    <marker id="arrowhead-blue" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#3b82f6"/>
+    </marker>
+    <linearGradient id="smallGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#fef3c7"/>
+      <stop offset="100%" style="stop-color:#fde68a"/>
+    </linearGradient>
+    <linearGradient id="mainGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#dbeafe"/>
+      <stop offset="100%" style="stop-color:#bfdbfe"/>
+    </linearGradient>
+    <linearGradient id="ghostGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#f3e8ff"/>
+      <stop offset="100%" style="stop-color:#e9d5ff"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="2" dy="2" stdDeviation="3" flood-opacity="0.15"/>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="900" height="400" fill="#f8fafc"/>
+
+  <!-- Title -->
+  <text x="450" y="35" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="24" font-weight="bold" fill="#1e293b">S3-FIFO Architecture</text>
+  <text x="450" y="55" text-anchor="middle" font-family="system-ui, sans-serif" font-size="12" fill="#64748b">Simple, Scalable FIFO-based Cache Eviction</text>
+
+  <!-- Small Queue (S) -->
+  <g filter="url(#shadow)">
+    <rect x="50" y="100" width="200" height="140" rx="12" fill="url(#smallGrad)" stroke="#f59e0b" stroke-width="2"/>
+  </g>
+  <text x="150" y="130" text-anchor="middle" font-family="system-ui, sans-serif" font-size="16" font-weight="bold" fill="#92400e">Small Queue (S)</text>
+  <text x="150" y="150" text-anchor="middle" font-family="system-ui, sans-serif" font-size="12" fill="#a16207">10% of capacity</text>
+
+  <!-- Small Queue Items -->
+  <rect x="70" y="170" width="40" height="50" rx="6" fill="#fff" stroke="#f59e0b" stroke-width="1.5"/>
+  <text x="90" y="192" text-anchor="middle" font-family="monospace" font-size="11" fill="#374151">obj</text>
+  <text x="90" y="208" text-anchor="middle" font-family="monospace" font-size="9" fill="#f59e0b">f=0</text>
+
+  <rect x="120" y="170" width="40" height="50" rx="6" fill="#fff" stroke="#f59e0b" stroke-width="1.5"/>
+  <text x="140" y="192" text-anchor="middle" font-family="monospace" font-size="11" fill="#374151">obj</text>
+  <text x="140" y="208" text-anchor="middle" font-family="monospace" font-size="9" fill="#f59e0b">f=1</text>
+
+  <rect x="170" y="170" width="40" height="50" rx="6" fill="#fff" stroke="#f59e0b" stroke-width="1.5"/>
+  <text x="190" y="192" text-anchor="middle" font-family="monospace" font-size="11" fill="#374151">obj</text>
+  <text x="190" y="208" text-anchor="middle" font-family="monospace" font-size="9" fill="#f59e0b">f=2</text>
+
+  <!-- Main Queue (M) -->
+  <g filter="url(#shadow)">
+    <rect x="320" y="100" width="280" height="140" rx="12" fill="url(#mainGrad)" stroke="#3b82f6" stroke-width="2"/>
+  </g>
+  <text x="460" y="130" text-anchor="middle" font-family="system-ui, sans-serif" font-size="16" font-weight="bold" fill="#1e40af">Main Queue (M)</text>
+  <text x="460" y="150" text-anchor="middle" font-family="system-ui, sans-serif" font-size="12" fill="#2563eb">90% of capacity</text>
+
+  <!-- Main Queue Items -->
+  <rect x="340" y="170" width="40" height="50" rx="6" fill="#fff" stroke="#3b82f6" stroke-width="1.5"/>
+  <text x="360" y="192" text-anchor="middle" font-family="monospace" font-size="11" fill="#374151">obj</text>
+  <text x="360" y="208" text-anchor="middle" font-family="monospace" font-size="9" fill="#3b82f6">f=2</text>
+
+  <rect x="390" y="170" width="40" height="50" rx="6" fill="#fff" stroke="#3b82f6" stroke-width="1.5"/>
+  <text x="410" y="192" text-anchor="middle" font-family="monospace" font-size="11" fill="#374151">obj</text>
+  <text x="410" y="208" text-anchor="middle" font-family="monospace" font-size="9" fill="#3b82f6">f=3</text>
+
+  <rect x="440" y="170" width="40" height="50" rx="6" fill="#fff" stroke="#3b82f6" stroke-width="1.5"/>
+  <text x="460" y="192" text-anchor="middle" font-family="monospace" font-size="11" fill="#374151">obj</text>
+  <text x="460" y="208" text-anchor="middle" font-family="monospace" font-size="9" fill="#3b82f6">f=1</text>
+
+  <rect x="490" y="170" width="40" height="50" rx="6" fill="#fff" stroke="#3b82f6" stroke-width="1.5"/>
+  <text x="510" y="192" text-anchor="middle" font-family="monospace" font-size="11" fill="#374151">obj</text>
+  <text x="510" y="208" text-anchor="middle" font-family="monospace" font-size="9" fill="#3b82f6">f=0</text>
+
+  <rect x="540" y="170" width="40" height="50" rx="6" fill="#fff" stroke="#3b82f6" stroke-width="1.5"/>
+  <text x="560" y="192" text-anchor="middle" font-family="monospace" font-size="11" fill="#374151">obj</text>
+  <text x="560" y="208" text-anchor="middle" font-family="monospace" font-size="9" fill="#3b82f6">f=2</text>
+
+  <!-- Ghost Queue (G) -->
+  <g filter="url(#shadow)">
+    <rect x="670" y="100" width="180" height="140" rx="12" fill="url(#ghostGrad)" stroke="#a855f7" stroke-width="2" stroke-dasharray="5,3"/>
+  </g>
+  <text x="760" y="130" text-anchor="middle" font-family="system-ui, sans-serif" font-size="16" font-weight="bold" fill="#7e22ce">Ghost Queue (G)</text>
+  <text x="760" y="150" text-anchor="middle" font-family="system-ui, sans-serif" font-size="12" fill="#9333ea">Metadata only</text>
+
+  <!-- Ghost Queue Items (just IDs) -->
+  <rect x="690" y="170" width="35" height="50" rx="6" fill="#fff" stroke="#a855f7" stroke-width="1.5" stroke-dasharray="3,2"/>
+  <text x="707" y="200" text-anchor="middle" font-family="monospace" font-size="10" fill="#7c3aed">id</text>
+
+  <rect x="733" y="170" width="35" height="50" rx="6" fill="#fff" stroke="#a855f7" stroke-width="1.5" stroke-dasharray="3,2"/>
+  <text x="750" y="200" text-anchor="middle" font-family="monospace" font-size="10" fill="#7c3aed">id</text>
+
+  <rect x="776" y="170" width="35" height="50" rx="6" fill="#fff" stroke="#a855f7" stroke-width="1.5" stroke-dasharray="3,2"/>
+  <text x="793" y="200" text-anchor="middle" font-family="monospace" font-size="10" fill="#7c3aed">id</text>
+
+  <!-- Arrows between queues -->
+  <path d="M 255 170 L 315 170" stroke="#374151" stroke-width="2" fill="none" marker-end="url(#arrowhead)"/>
+  <text x="285" y="163" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" fill="#374151">freq &gt; 1</text>
+
+  <path d="M 605 170 L 665 170" stroke="#374151" stroke-width="2" fill="none" marker-end="url(#arrowhead)"/>
+  <text x="635" y="163" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" fill="#374151">evict</text>
+
+  <!-- New object insertion arrow -->
+  <path d="M 150 280 L 150 245" stroke="#16a34a" stroke-width="2" fill="none" marker-end="url(#arrowhead)"/>
+  <rect x="100" y="285" width="100" height="30" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
+  <text x="150" y="305" text-anchor="middle" font-family="system-ui, sans-serif" font-size="12" font-weight="500" fill="#166534">New Object</text>
+
+  <!-- Ghost hit reinsertion -->
+  <path d="M 760 245 C 760 300 460 300 460 245" stroke="#9333ea" stroke-width="2" fill="none" stroke-dasharray="5,3" marker-end="url(#arrowhead)"/>
+  <text x="610" y="295" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" fill="#7e22ce">Ghost hit → Main</text>
+
+  <!-- Legend -->
+  <rect x="50" y="340" width="800" height="50" rx="8" fill="#fff" stroke="#e2e8f0" stroke-width="1"/>
+  <text x="70" y="362" font-family="system-ui, sans-serif" font-size="11" fill="#64748b">Legend:</text>
+
+  <rect x="130" y="352" width="12" height="12" rx="2" fill="#fde68a" stroke="#f59e0b"/>
+  <text x="150" y="362" font-family="system-ui, sans-serif" font-size="11" fill="#374151">Small (filters one-hit wonders)</text>
+
+  <rect x="340" y="352" width="12" height="12" rx="2" fill="#bfdbfe" stroke="#3b82f6"/>
+  <text x="360" y="362" font-family="system-ui, sans-serif" font-size="11" fill="#374151">Main (stores reusable objects)</text>
+
+  <rect x="560" y="352" width="12" height="12" rx="2" fill="#e9d5ff" stroke="#a855f7" stroke-dasharray="2,1"/>
+  <text x="580" y="362" font-family="system-ui, sans-serif" font-size="11" fill="#374151">Ghost (metadata only, scan resistance)</text>
+
+  <text x="780" y="362" font-family="monospace" font-size="11" fill="#64748b">f = frequency (0-3)</text>
+</svg>
